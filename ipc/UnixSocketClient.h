@@ -13,6 +13,7 @@ namespace ipc {
     {
     public:
         UnixSocketClient();
+        UnixSocketClient(const std::string& inName);
         virtual ~UnixSocketClient();
         
         void start();

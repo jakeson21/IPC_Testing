@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <cstdio>
+#include <string>
 
 #include <chrono>
 #include <ctime>
@@ -18,6 +20,45 @@ void my_handler(int){
     flag = 1;
 }
 
+
+void f1(ipc::UnixSocketClient& client)
+{
+    ipc::Data data;
+    std::chrono::system_clock::time_point today;
+    while(!flag)
+    {
+        client.start();
+        today = std::chrono::system_clock::now();
+        time_t tt = std::chrono::system_clock::to_time_t ( today );
+        char* d =  ctime(&tt);
+        strncpy(data.buf, d, data.length);
+        // data.length = strlen(d);
+        
+        printf("Sending: %s", data.buf);
+        client.send(data);
+        client.stop();
+        
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    }
+}
+
+void f2(ipc::UnixSocketClient& client)
+{
+    ipc::Data data;
+    int d = 0;
+    while(!flag)
+    {
+        client.start();
+        snprintf (data.buf, data.length, "Loop %d\n", ++d);
+        printf("Sending: %s", data.buf);
+        client.send(data);
+        client.stop();
+        
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }    
+}
+
+
 int main(int argc, char **argv) {
     struct sigaction sigIntHandler;
 
@@ -31,25 +72,23 @@ int main(int argc, char **argv) {
    
     std::cout << "Starting Client..." << std::endl;
     
-    ipc::UnixSocketClient client;
-    client.start();
+    ipc::UnixSocketClient client1(std::string("myunixsocket"));;
+    //client1.start();
     
-    ipc::Data data;
-    std::chrono::system_clock::time_point today;
+    ipc::UnixSocketClient client2(std::string("myunixsocket"));;
+    //client2.start();
+    
+    std::thread t1(f1, std::ref(client1));
+    std::thread t2(f2, std::ref(client2));
+    
     while(!flag)
     {
-        today = std::chrono::system_clock::now();
-        time_t tt = std::chrono::system_clock::to_time_t ( today );
-        char* d =  ctime(&tt);
-        strncpy(data.buf, d, data.length);
-        // data.length = strlen(d);
-        printf("Sending: %s", data.buf);
-        client.send(data);
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
     
     std::cout << "Client Exiting..." << std::endl;
+    t1.join();
+    //t2.join();
     
     return 0;
 }

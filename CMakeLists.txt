@@ -15,7 +15,7 @@ add_subdirectory(ipc)
 
 
 add_executable(ipc_client client.cpp)
-target_link_libraries(ipc_client PUBLIC myIpcLib)
+target_link_libraries(ipc_client PUBLIC myIpcLib pthread)
 target_include_directories(ipc_client PRIVATE ipc)
 
 

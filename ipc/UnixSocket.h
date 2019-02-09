@@ -2,6 +2,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <netinet/in.h>
 #include <unistd.h>
 
 #include <stdexcept>
@@ -25,17 +26,19 @@ namespace ipc {
     {
     public:
         UnixSocket()
-        : myName("socket"),
+        : sock(0),
+        msgsock(0),
+        myName("socket"),
         isConnected(false)
         {
-            initSocket();
+            //initSocket();
         }
         
-        UnixSocket(std::string inName)
+        UnixSocket(const std::string& inName)
         : myName(inName),
         isConnected(false)
         {
-            initSocket();
+            //initSocket();
         }
         
         
@@ -50,6 +53,8 @@ namespace ipc {
         { 
             if (sock) close(sock);
             if (msgsock) close(msgsock);
+            sock = 0;
+            msgsock = 0;
         }
         
         bool send(const ipc::Data& inData)
@@ -64,21 +69,31 @@ namespace ipc {
         
         int receive(ipc::Data& inBuf)
         {
-            //msgsock = accept(sock, 0, 0);
-            //if (msgsock == -1)
-            //    perror("accept");
-            //{
-                bzero(inBuf.buf, inBuf.length*sizeof(char));
-                //if ((rval = read(msgsock, inBuf.buf.data(), inBuf.buf.size())) < 0)
-                //    perror("reading stream message");
-                //else if (rval == 0)
-                //    printf("Ending connection\n");
-                //else
-                //    printf("-->%s\n", buf.data());
-            //}
-            //close(msgsock);
+            int pid, rval=0;
+            socklen_t clilen;
+            struct sockaddr_in serv_addr, cli_addr;
+            clilen = sizeof(cli_addr);
+            ipc::Data d;
             
-            rval = read(msgsock, inBuf.buf, inBuf.length);
+            //printf("accepting\n");
+            msgsock = accept(sock, (struct sockaddr *) &cli_addr, &clilen);
+            if (msgsock < 0)
+                perror("accept\n");          
+
+            //printf("accepted\n");
+            pid = fork();
+
+            bzero(d.buf, d.length*sizeof(char));
+            if (pid < 0)
+                perror("ERROR on fork");
+            if (pid == 0)  {
+                close(sock);
+                rval = read(msgsock, d.buf, d.length);
+                printf("-->%s", d.buf);
+                exit(0);
+            }
+            else close(msgsock);
+            
             return rval;
         }
         
@@ -96,7 +111,6 @@ namespace ipc {
         
         int sock;
         int msgsock;
-        int rval;
         struct sockaddr_un server;
         std::string myName; // must be < 108 characters in length
         

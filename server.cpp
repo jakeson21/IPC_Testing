@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <string>
 
 #include <chrono>
 #include <thread>
@@ -28,7 +29,7 @@ int main(int argc, char **argv) {
    
     std::cout << "Starting Server..." << std::endl;
     
-    ipc::UnixSocketServer server;
+    ipc::UnixSocketServer server(std::string("myunixsocket"));
     server.start();
     
 //     while(!flag) {
@@ -51,16 +52,17 @@ int main(int argc, char **argv) {
     ipc::Data d;
     while(!flag)
     {
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
         
-        if (server.receive(d) > 0)
-        {
-            printf("-->%s", d.buf);
-        }
-        else
-        {
-            printf("nothing...\n");
-        }
+//         if (server.receive(d) > 0)
+//         {
+//             printf("-->%s", d.buf);
+//         }
+//         else
+//         {
+//             printf("nothing...\n");
+//         }
+        server.receive(d);
     }
     
     std::cout << "Server Exiting..." << std::endl;
