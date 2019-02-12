@@ -1,5 +1,6 @@
 set(PROJECT_VERSION 1)
 
+
 # set_target_properties(myIpcLib PROPERTIES VERSION ${PROJECT_VERSION})
 
 add_library(myIpcLib SHARED 

@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.1)
 project(ipc_testing)
 
+set(PROJECT_VERSION 1)
+
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -20,7 +22,7 @@ target_include_directories(ipc_client PRIVATE ipc)
 
 
 add_executable(ipc_server server.cpp)
-target_link_libraries(ipc_server PUBLIC myIpcLib)
+target_link_libraries(ipc_server PUBLIC myIpcLib pthread)
 target_include_directories(ipc_server PRIVATE ipc)
 
 

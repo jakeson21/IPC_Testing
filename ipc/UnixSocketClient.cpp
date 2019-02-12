@@ -19,16 +19,23 @@ UnixSocketClient::~UnixSocketClient()
 {
 }
 
-void UnixSocketClient::start()
+StatusTypeE UnixSocketClient::start()
 {
-    this->initSocket();
+    ipc::StatusTypeE status;
+    if ((status = this->initSocket()) != ipc::StatusTypeE::Success)
+    {
+        return status;
+    }
+    
     if (connect(sock, (struct sockaddr *) &server, sizeof(struct sockaddr_un)) < 0) {
         this->stop();
         perror("connecting stream socket");
-        throw std::runtime_error("Error connecting stream socket");
+        return StatusTypeE::Connection_Error;
     }
-    //printf("Socket has name %s\n", server.sun_path);
+
     isConnected = true;
+    
+    return StatusTypeE::Success;
 }
 
 } /* namespace ipc */

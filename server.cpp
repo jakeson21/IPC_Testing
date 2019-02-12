@@ -30,39 +30,17 @@ int main(int argc, char **argv) {
     std::cout << "Starting Server..." << std::endl;
     
     ipc::UnixSocketServer server(std::string("myunixsocket"));
-    server.start();
+    ipc::StatusTypeE status;
+    if ((status = server.start()) != ipc::StatusTypeE::Success)
+    {
+        return (int)status;
+    }
     
-//     while(!flag) {
-//         msgsock = accept(sock, 0, 0);
-//         if (msgsock == -1)
-//             perror("accept");
-//         else do {
-//             bzero(buf.data(), buf.size()*sizeof(char));
-//             if ((rval = read(msgsock, buf.data(), buf.size())) < 0)
-//                 perror("reading stream message");
-//             else if (rval == 0)
-//                 printf("Ending connection\n");
-//             else
-//                 printf("-->%s\n", buf.data());
-//         } while (rval > 0);
-//         close(msgsock);
-//     }
-    
-    
-    ipc::Data d;
     while(!flag)
     {
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        
-//         if (server.receive(d) > 0)
-//         {
-//             printf("-->%s", d.buf);
-//         }
-//         else
-//         {
-//             printf("nothing...\n");
-//         }
-        server.receive(d);
+        // std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        // std::cout << "calling receive" << std::endl;
+        server.receive();
     }
     
     std::cout << "Server Exiting..." << std::endl;

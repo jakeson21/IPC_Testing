@@ -16,18 +16,36 @@ UnixSocketServer::~UnixSocketServer()
 {
 }
 
-void UnixSocketServer::start()
+StatusTypeE UnixSocketServer::start()
 {
-    this->initSocket();
+    ipc::StatusTypeE status;
+    if ((status = this->initSocket()) != ipc::StatusTypeE::Success)
+    {
+        return status;
+    }
+
     unlink(server.sun_path);
+    
+    int yes=1;
+    //char yes='1'; // Solaris people use this
+    // lose the pesky "Address already in use" error message
+    if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof yes) == -1) {
+        perror("setsockopt");
+        // throw std::runtime_error("Error in setsockopt");
+        return StatusTypeE::SetSockOptError;
+    }
+    
     if (bind(sock, (struct sockaddr *) &server, sizeof(struct sockaddr_un))) 
     {
         perror("binding stream socket");
-        throw std::runtime_error("Error binding stream socket");
+        // throw std::runtime_error("Error binding stream socket");
+        return StatusTypeE::BindError;
     }
-    //printf("Socket has name %s\n", server.sun_path);
+    
     listen(sock, 5);
     isConnected = true;
+    
+    return StatusTypeE::Success;
 }
 
 

@@ -1,24 +1,42 @@
 // UNIX Domain Sockets
+#ifndef UNIXSOCKET_H
+#define UNIXSOCKET_H
+
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <netinet/in.h>
+#include <netdb.h>
+#include <arpa/inet.h>
 #include <unistd.h>
 
+#include <chrono>
+#include <thread>
+#include <mutex>
 #include <stdexcept>
 #include <string>
+#include <iostream>
+#include <map>
+#include <queue>
 
 namespace ipc {
     
     struct __attribute__ ((packed)) Data{
         Data()
-        : length(128)
+        : length(4*102400)
         {
-            //buf.resize(1024, 0);
         }
             
-        uint16_t length;
-        char buf[128];
+        size_t length;
+        char buf[4*102400];
+    };
+    
+    enum class StatusTypeE {
+        Success = 0,
+        Connection_Error = 1,
+        BindError,
+        SetSockOptError,
+        SocketOpenError
     };
     
     
@@ -27,18 +45,19 @@ namespace ipc {
     public:
         UnixSocket()
         : sock(0),
-        msgsock(0),
         myName("socket"),
-        isConnected(false)
+        isConnected(false),
+        isRunning(true),
+        poolJoinThread(&UnixSocket::cleanUp, this)
         {
-            //initSocket();
         }
         
         UnixSocket(const std::string& inName)
         : myName(inName),
-        isConnected(false)
+        isConnected(false),
+        isRunning(true),
+        poolJoinThread(&UnixSocket::cleanUp, this)
         {
-            //initSocket();
         }
         
         
@@ -47,14 +66,29 @@ namespace ipc {
             stop();
         }
         
-        virtual void start() = 0;
+        virtual StatusTypeE start() = 0;
         
         void stop() 
         { 
+            isConnected = false;
+            isRunning = false;
             if (sock) close(sock);
-            if (msgsock) close(msgsock);
             sock = 0;
-            msgsock = 0;
+            
+            if (poolJoinThread.joinable())
+            {
+                poolJoinThread.join();
+            }
+            
+            for (auto& item : threadMap)
+            {
+                auto t = item.second.get();
+                if (t->joinable())
+                {
+                    t->join();
+                }
+            }
+            threadMap.clear();
         }
         
         bool send(const ipc::Data& inData)
@@ -67,54 +101,139 @@ namespace ipc {
             return true;
         }
         
-        int receive(ipc::Data& inBuf)
+        void receive()
         {
-            int pid, rval=0;
-            socklen_t clilen;
-            struct sockaddr_in serv_addr, cli_addr;
-            clilen = sizeof(cli_addr);
-            ipc::Data d;
-            
-            //printf("accepting\n");
-            msgsock = accept(sock, (struct sockaddr *) &cli_addr, &clilen);
-            if (msgsock < 0)
-                perror("accept\n");          
-
-            //printf("accepted\n");
-            pid = fork();
-
-            bzero(d.buf, d.length*sizeof(char));
-            if (pid < 0)
-                perror("ERROR on fork");
-            if (pid == 0)  {
-                close(sock);
-                rval = read(msgsock, d.buf, d.length);
-                printf("-->%s", d.buf);
-                exit(0);
+            if (isConnected)
+            {
+                // int rval=0;
+                socklen_t clilen;
+                struct sockaddr cli_addr;
+                clilen = sizeof(cli_addr);
+//                 char s[INET6_ADDRSTRLEN];
+                
+                int msgsock = accept(sock, (struct sockaddr *) &cli_addr, &clilen);
+                if (msgsock < 0)
+                {
+                    perror("accept\n");
+                    exit(1);
+                }
+                
+    //             inet_ntop(cli_addr.ss_family, 
+    //                       get_in_addr((struct sockaddr *)&cli_addr), 
+    //                       s, 
+    //                       sizeof(s));
+    //             
+    //             printf("server: got connection from %s\n", s);
+                
+//                 printf("server: got connection from %s\n", cli_addr.sa_data);
+                
+                // printf("server: got connection\n");
+                
+                static size_t id = 0;
+                {
+                    std::lock_guard<std::mutex> lock(threadMapMutex);
+                    threadMap[id] = std::make_shared<std::thread>(&UnixSocket::rxThread, this, msgsock, id);
+                    std::cout << "Added > thread pool size: " << threadMap.size() << std::endl;
+                }
+                id++;
+                
             }
-            else close(msgsock);
+            else
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+        }
+        
+        void rxThread(int handle, size_t threadId)
+        {
+            // std::thread::id this_id = std::this_thread::get_id();
+            // std::cout << "thread's id: " << this_id << std::endl;
             
-            return rval;
+            ipc::Data d;
+            bzero(d.buf, d.length*sizeof(char));
+            int rval = read(handle, d.buf, d.length);
+            close(handle);
+            // printf("read %d-->%s", rval, d.buf);
+            std::cout << "Got " << rval << " bytes" << std::endl;
+            
+            // std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            
+            // Prep for thread join()
+            std::lock_guard<std::mutex> lock(threadJoinQueueMutex);
+            threadJoinQueue.push(threadId);
         }
         
     protected:
-        void initSocket()
+        StatusTypeE initSocket()
         {
             sock = socket(AF_UNIX, SOCK_STREAM, 0);
             if (sock < 0) {
                 perror("opening stream socket");
-                throw std::runtime_error("Error opening stream socket");
+                // throw std::runtime_error("Error opening stream socket");
+                return StatusTypeE::SocketOpenError;
             }
             server.sun_family = AF_UNIX;
             strcpy(server.sun_path, myName.c_str());            
+            return StatusTypeE::Success;
+        }
+        
+        // get sockaddr, IPv4 or IPv6:
+        void *get_in_addr(struct sockaddr *sa)
+        {
+            if (sa->sa_family == AF_INET) {
+                return &(((struct sockaddr_in*)sa)->sin_addr);
+            }
+            return &(((struct sockaddr_in6*)sa)->sin6_addr);
+        }
+        
+        void cleanUp()
+        {
+            std::cout << "cleanUp() thread" << std::endl;
+            while (isRunning)
+            {                                
+                std::unique_lock<std::mutex> lock(threadJoinQueueMutex);
+                if (threadJoinQueue.size())
+                {
+                    size_t threadMapKey = threadJoinQueue.front();
+                    threadJoinQueue.pop();
+                    lock.unlock();
+                    
+                    std::lock_guard<std::mutex> lock2(threadMapMutex);
+                    auto search = threadMap.find(threadMapKey);
+                    if (search != threadMap.end())
+                    {
+                        auto t = search->second.get();
+                        if (t->joinable())
+                        {
+                            t->join();
+                        }
+                        threadMap.erase(threadMapKey);
+                        std::cout << "Erased > thread pool size: " << threadMap.size() << std::endl;
+                    }
+                }
+                else
+                {
+                    lock.unlock();
+                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                }
+            }
         }
         
         int sock;
-        int msgsock;
+        // int msgsock;
         struct sockaddr_un server;
         std::string myName; // must be < 108 characters in length
         
-        bool isConnected;
+        bool isConnected, isRunning;
+        
+        std::mutex threadMapMutex;
+        std::map<size_t, std::shared_ptr<std::thread>> threadMap;
+        
+        std::thread poolJoinThread;
+        std::mutex threadJoinQueueMutex;
+        std::queue<size_t> threadJoinQueue;
     };
         
 }
+
+#endif // UNIXSOCKET_H

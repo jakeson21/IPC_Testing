@@ -1,4 +1,6 @@
-// UNIX Domain Sockets
+#ifndef UNIXSOCKETCLIENT_H
+#define UNIXSOCKETCLIENT_H
+
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -16,12 +18,12 @@ namespace ipc {
         UnixSocketClient(const std::string& inName);
         virtual ~UnixSocketClient();
         
-        void start();
+        StatusTypeE start();
         
     protected:
-//         std::vector<char> buf;
         
     };
 
 } /* namespace ipc */
 
+#endif // UNIXSOCKETCLIENT_H
